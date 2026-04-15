@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e141a">
+<title>Bow parameters — a Schelleng workshop</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>Bow parameters</h1>
+    <div class="top-actions">
+      <button id="tourBtn" class="btn btn-ghost" type="button">Take the tour</button>
+      <button id="audioToggle" class="btn btn-audio" type="button" aria-pressed="false">
+        <span class="icon" aria-hidden="true">🔇</span><span class="label">sound off</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <figure class="diagram-wrap">
+      <svg id="plot" viewBox="0 0 600 600" role="img"
+           aria-label="Schelleng diagram of bow force against bow-bridge distance"></svg>
+      <div class="diagram-hint" id="diagramHint">drag anywhere &middot; tap a chip</div>
+    </figure>
+
+    <aside class="sidebar">
+      <section class="readout" aria-live="polite">
+        <div class="region-name" id="regionName">ordinario</div>
+        <div class="coupling" id="coupling">Helmholtz corner motion — pitched tone.</div>
+        <dl class="params">
+          <div><dt>β</dt><dd><span id="betaVal">0.080</span><em id="betaDesc">mid</em></dd></div>
+          <div><dt>v</dt><dd><span id="vVal">0.35</span><em id="vDesc">moderato</em></dd></div>
+          <div><dt>F</dt><dd><span id="fVal">0.50</span><em id="fDesc">medium</em></dd></div>
+        </dl>
+      </section>
+
+      <section class="speed">
+        <label for="vSlider">
+          <span>bow speed <em>— shifts both curves</em></span>
+          <output id="vOut" for="vSlider">0.35</output>
+        </label>
+        <input type="range" id="vSlider" min="0.05" max="1.2" step="0.005" value="0.35">
+        <div class="ticks" aria-hidden="true"><span>crawl</span><span>moderato</span><span>fast</span></div>
+      </section>
+
+      <section class="presets">
+        <div class="presets-label">named effects are coordinates</div>
+        <div class="chips" id="chips">
+          <button type="button" data-preset="tasto">sul tasto</button>
+          <button type="button" data-preset="flautando">flautando</button>
+          <button type="button" data-preset="ordinario">ordinario</button>
+          <button type="button" data-preset="ponticello">sul pont.</button>
+          <button type="button" data-preset="overpressure">overpressure</button>
+          <button type="button" data-preset="schnarr">Schnarrklang</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="audioStatus" class="audio-status hidden" role="status"></div>
+</div>
+
+<div id="tour" class="tour hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+  <div class="tour-card">
+    <button class="tour-close" id="tourClose" type="button" aria-label="Close tour">×</button>
+    <div class="tour-body" id="tourBody"></div>
+    <nav class="tour-nav">
+      <button id="tourPrev" class="btn btn-ghost" type="button">back</button>
+      <div class="tour-dots" id="tourDots" aria-hidden="true"></div>
+      <button id="tourNext" class="btn btn-primary" type="button">next</button>
+    </nav>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

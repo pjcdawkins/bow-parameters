@@ -1,0 +1,7 @@
+.git/**
+.claude/**
+.wrangler/**
+wrangler.toml
+worker.js
+.assetsignore
+.gitignore
