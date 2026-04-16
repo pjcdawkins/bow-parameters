@@ -9,8 +9,8 @@ class BowedStringProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: 'beta',  defaultValue: 0.08, minValue: 0.005, maxValue: 0.5,  automationRate: 'k-rate' },
-      { name: 'vBow',  defaultValue: 0.0,  minValue: 0,     maxValue: 2.0,  automationRate: 'k-rate' },
-      { name: 'force', defaultValue: 0.3,  minValue: 0,     maxValue: 20,   automationRate: 'k-rate' },
+      { name: 'vBow',  defaultValue: 0.0,  minValue: 0,     maxValue: 4.0,  automationRate: 'k-rate' },
+      { name: 'force', defaultValue: 0.3,  minValue: 0,     maxValue: 30,   automationRate: 'k-rate' },
       { name: 'gate',  defaultValue: 0,    minValue: 0,     maxValue: 1,    automationRate: 'k-rate' }
     ];
   }
@@ -44,13 +44,17 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     const bb = this.bb, ub = this.ub, bn = this.bn, nb = this.nb;
 
     for (let i = 0; i < out.length; i++) {
-      // Smooth parameters — slower for richer transitions; asymmetric
-      // release on vBow so the string rings down naturally.
-      this.bSm += (bT - this.bSm) * 0.0004;
-      const vTarget = g > 0.5 ? vT : 0;
-      const vCoeff = (vTarget < this.vSm) ? 0.00008 : 0.0004;
-      this.vSm += (vTarget - this.vSm) * vCoeff;
-      this.fSm += (fT - this.fSm) * 0.0004;
+      // When gate closes, kill everything immediately.
+      if (g < 0.5) {
+        this.vSm = 0; this.fSm = 0;
+        bb.fill(0); ub.fill(0); bn.fill(0); nb.fill(0);
+        this.lp = 0; this.dcIn = 0; this.dcOut = 0;
+        out[i] = 0;
+        continue;
+      }
+      this.bSm += (bT - this.bSm) * 0.001;
+      this.vSm += (vT - this.vSm) * 0.001;
+      this.fSm += (fT - this.fSm) * 0.001;
 
       const p  = Math.max(1, Math.min(N - 2, Math.round(this.bSm * N)));
       const Ln = N - p;
@@ -61,23 +65,30 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       const bFromBr  = bb[(this.bbP - p  + N) % N];
       const bFromNt  = nb[(this.nbP - Ln + N) % N];
 
-      // Bridge termination: one-pole lowpass + sign flip + small damping.
-      const a = 0.55;
+      // Bridge termination: one-pole lowpass + sign flip + damping.
+      // Brighter near bridge (ponticello harmonics), darker at tasto.
+      const a = 0.3 + (1 - Math.min(1, this.bSm * 5)) * 0.5;
       const lpNew = a * atBridge + (1 - a) * this.lp;
       this.lp = lpNew;
-      const bridgeOut = -lpNew * 0.996;
+      const bridgeOut = -lpNew * 0.999;
 
       // Nut termination: near-rigid, just sign flip with tiny loss.
-      const nutOut = -atNut * 0.999;
+      const nutOut = -atNut * 0.9995;
 
       // Bow junction: scatter with friction-curve nonlinearity.
       const vStr = bFromBr + bFromNt;
-      const dv   = this.vSm - vStr;
       const F    = this.fSm;
+      const beta = this.bSm;
+      // High force → noisy bow velocity for aperiodic schnarr character.
+      const schnarr = F > 7.5 ? (Math.random() * 2 - 1) * (F - 7.5) * 0.3 : 0;
+      const dv   = this.vSm + schnarr - vStr;
       const adv  = dv < 0 ? -dv : dv;
-      const eps  = 0.14 / (F < 0.01 ? 0.01 : F);     // slip scale: large F = small eps = stickier
+      // Slip scale varies with β: looser near bridge (clean ponticello),
+      // stickier far from bridge (tasto sustains).
+      const epsBase = 0.05 + Math.max(0, 0.12 - beta) * 1.2;
+      const eps  = epsBase / (F < 0.01 ? 0.01 : F);
       const mu   = (dv < 0 ? -1 : 1) * adv / (adv + eps);
-      const delta = F * mu * 1.75;                   // bow-injected wave, Z0 absorbed
+      const delta = F * mu * 5.0;                    // bow-injected wave, Z0 absorbed
 
       // Advance pointers and write outgoing waves into each delay line.
       this.bbP = (this.bbP + 1) % N;
@@ -90,8 +101,10 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       bn[this.bnP] = bFromBr + delta;
       ub[this.ubP] = bFromNt + delta;
 
-      // Output proxy: the wave currently shaking the bridge.
-      let y = atBridge * 6.5;
+      // Velocity scales volume (faster bow = louder); beta gain lifts tasto.
+      const vGain = 0.3 + this.vSm * 1.5;
+      const betaGain = 1 + this.bSm * 12;
+      let y = atBridge * 10 * betaGain * vGain;
 
       // DC blocker.
       const d = y - this.dcIn + 0.995 * this.dcOut;

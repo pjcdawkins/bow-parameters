@@ -4,18 +4,18 @@
 // the pedagogical hook of the whole tool.
 
 const BETA_MIN = 0.015, BETA_MAX = 0.25;
-const F_MIN = 0.01, F_MAX = 10;
+const F_MIN = 0.01, F_MAX = 30;
 const K_MAX = 0.5, K_MIN = 0.0012;
 
 const PLOT = { x: 66, y: 40, w: 500, h: 500 };
 
 const PRESETS = {
-  tasto:        { beta: 0.18,  f: 0.18, v: 0.30 },
-  flautando:    { beta: 0.10,  f: 0.03, v: 0.55 },
-  ordinario:    { beta: 0.075, f: 0.55, v: 0.38 },
-  ponticello:   { beta: 0.025, f: 0.80, v: 0.25 },
-  overpressure: { beta: 0.08,  f: 4.0,  v: 0.25 },
-  schnarr:      { beta: 0.05,  f: 6.5,  v: 0.12 }
+  tasto:        { beta: 0.18,  f: 0.54, v: 0.90 },
+  flautando:    { beta: 0.10,  f: 0.09, v: 1.65 },
+  ordinario:    { beta: 0.075, f: 1.65, v: 1.14 },
+  ponticello:   { beta: 0.025, f: 2.40, v: 0.75 },
+  overpressure: { beta: 0.08,  f: 12.0, v: 0.75 },
+  schnarr:      { beta: 0.05,  f: 19.5, v: 0.36 }
 };
 
 const REGION_COPY = {
@@ -51,9 +51,9 @@ const REGION_COPY = {
 
 const state = {
   beta: 0.075,
-  f: 0.55,
-  v: 0.38,
-  audio: { ctx: null, node: null, on: false, tried: false, failed: false },
+  f: 1.65,
+  v: 1.14,
+  audio: { ctx: null, node: null, on: false, pending: null, failed: false },
   anim: null
 };
 
@@ -267,17 +267,17 @@ function betaWords(b) {
   return 'over the fingerboard';
 }
 function vWords(v) {
-  if (v < 0.10) return 'crawling';
-  if (v < 0.22) return 'slow détaché';
-  if (v < 0.45) return 'moderato';
-  if (v < 0.80) return 'flowing';
+  if (v < 0.30) return 'crawling';
+  if (v < 0.66) return 'slow détaché';
+  if (v < 1.35) return 'moderato';
+  if (v < 2.40) return 'flowing';
   return 'fast';
 }
 function fWords(f) {
-  if (f < 0.05) return 'feather';
-  if (f < 0.2)  return 'light';
-  if (f < 0.8)  return 'medium';
-  if (f < 2.5)  return 'firm';
+  if (f < 0.15) return 'feather';
+  if (f < 0.6)  return 'light';
+  if (f < 2.4)  return 'medium';
+  if (f < 7.5)  return 'firm';
   return 'pressed hard';
 }
 
@@ -401,46 +401,56 @@ function applyPreset(name) {
 
 // ---------- audio ----------
 async function ensureAudio() {
-  if (state.audio.ctx) return !state.audio.failed;
-  if (state.audio.tried) return !state.audio.failed;
-  state.audio.tried = true;
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx || typeof AudioWorkletNode === 'undefined') throw new Error('no audio worklet');
-    const ctx = new Ctx();
-    await ctx.audioWorklet.addModule('bowed-string-worklet.js');
-    const node = new AudioWorkletNode(ctx, 'bowed-string', { outputChannelCount: [1] });
-    node.parameters.get('beta').value  = state.beta;
-    node.parameters.get('force').value = state.f;
-    node.parameters.get('vBow').value  = state.v;
-    node.parameters.get('gate').value  = 0;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.9;
-    node.connect(gain).connect(ctx.destination);
-    state.audio.ctx = ctx;
-    state.audio.node = node;
-    return true;
-  } catch (err) {
-    state.audio.failed = true;
-    const p = $('audioStatus');
-    p.textContent = 'audio unavailable in this browser';
-    p.classList.remove('hidden');
-    $('audioToggle').disabled = true;
-    return false;
-  }
+  if (state.audio.ctx) return true;
+  if (state.audio.failed) return false;
+  if (state.audio.pending) return state.audio.pending;
+  state.audio.pending = (async () => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx || typeof AudioWorkletNode === 'undefined') throw new Error('no audio worklet');
+      const ctx = new Ctx();
+      await ctx.audioWorklet.addModule('bowed-string-worklet.js');
+      const node = new AudioWorkletNode(ctx, 'bowed-string', { outputChannelCount: [1] });
+      node.parameters.get('beta').value  = state.beta;
+      node.parameters.get('force').value = state.f;
+      node.parameters.get('vBow').value  = state.v;
+      node.parameters.get('gate').value  = 0;
+      const gain = ctx.createGain();
+      gain.gain.value = 1.0;
+      node.connect(gain).connect(ctx.destination);
+      state.audio.ctx = ctx;
+      state.audio.node = node;
+      return true;
+    } catch (err) {
+      state.audio.failed = true;
+      const p = $('audioStatus');
+      p.textContent = 'audio unavailable in this browser';
+      p.classList.remove('hidden');
+      $('audioToggle').disabled = true;
+      return false;
+    }
+  })();
+  return state.audio.pending;
 }
 
+let toggling = false;
 async function toggleAudio() {
-  const ok = await ensureAudio();
-  if (!ok) return;
-  const { ctx, node } = state.audio;
-  if (ctx.state === 'suspended') await ctx.resume();
-  state.audio.on = !state.audio.on;
-  node.parameters.get('gate').value = state.audio.on ? 1 : 0;
-  const btn = $('audioToggle');
-  btn.setAttribute('aria-pressed', state.audio.on ? 'true' : 'false');
-  btn.querySelector('.icon').textContent = state.audio.on ? '🔈' : '🔇';
-  btn.querySelector('.label').textContent = state.audio.on ? 'sound on' : 'sound off';
+  if (toggling) return;
+  toggling = true;
+  try {
+    const ok = await ensureAudio();
+    if (!ok) return;
+    const { ctx, node } = state.audio;
+    if (ctx.state === 'suspended') await ctx.resume();
+    state.audio.on = !state.audio.on;
+    node.parameters.get('gate').value = state.audio.on ? 1 : 0;
+    const btn = $('audioToggle');
+    btn.setAttribute('aria-pressed', state.audio.on ? 'true' : 'false');
+    btn.querySelector('.icon').textContent = state.audio.on ? '🔈' : '🔇';
+    btn.querySelector('.label').textContent = state.audio.on ? 'sound on' : 'sound off';
+  } finally {
+    toggling = false;
+  }
 }
 
 // ---------- theme ----------
