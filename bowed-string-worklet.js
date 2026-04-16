@@ -31,6 +31,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     this.lp = 0;
     this.dcIn = 0; this.dcOut = 0;
     this.vSm = 0; this.fSm = 0.3; this.bSm = 0.08;
+    this.gSm = 0;   // smoothed gate envelope to avoid clicks
   }
 
   process(inputs, outputs, params) {
@@ -44,11 +45,15 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     const bb = this.bb, ub = this.ub, bn = this.bn, nb = this.nb;
 
     for (let i = 0; i < out.length; i++) {
-      // When gate closes, kill everything immediately.
-      if (g < 0.5) {
+      // Smooth gate envelope (~5 ms ramp) to avoid clicks on start/stop.
+      const gTarget = g >= 0.5 ? 1 : 0;
+      this.gSm += (gTarget - this.gSm) * 0.02;
+      if (this.gSm < 0.0001) {
+        // Fully faded out — clear state for a clean restart.
         this.vSm = 0; this.fSm = 0;
         bb.fill(0); ub.fill(0); bn.fill(0); nb.fill(0);
         this.lp = 0; this.dcIn = 0; this.dcOut = 0;
+        this.gSm = 0;
         out[i] = 0;
         continue;
       }
@@ -113,7 +118,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
 
       // Gentle soft-clip safety net.
       y = Math.tanh(y * 1.1) * 0.99;
-      out[i] = y;
+      out[i] = y * this.gSm;
     }
     return true;
   }

@@ -345,7 +345,7 @@ function initDrag() {
     pt.x = evt.clientX; pt.y = evt.clientY;
     return pt.matrixTransform(svg.getScreenCTM().inverse());
   }
-  function apply(evt) {
+  function apply(evt, abrupt) {
     const { x, y } = toLocal(evt);
     const cx = Math.max(PLOT.x, Math.min(PLOT.x + PLOT.w, x));
     const cy = Math.max(PLOT.y, Math.min(PLOT.y + PLOT.h, y));
@@ -353,7 +353,7 @@ function initDrag() {
     state.f    = yToForce(cy);
     updatePuck();
     updateReadout();
-    pushAudio();
+    pushAudio(abrupt);
     $('diagramHint')?.classList.add('faded');
   }
 
@@ -365,7 +365,7 @@ function initDrag() {
     try { svg.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
     cancelPresetAnim();
-    apply(e);
+    apply(e, true);
   });
   svg.addEventListener('pointermove', (e) => { if (dragging) apply(e); });
   const stop = () => { dragging = false; };
@@ -420,6 +420,7 @@ async function ensureAudio() {
       node.connect(gain).connect(ctx.destination);
       state.audio.ctx = ctx;
       state.audio.node = node;
+      state.audio.gain = gain;
       return true;
     } catch (err) {
       state.audio.failed = true;
@@ -469,9 +470,17 @@ function toggleTheme() {
   try { localStorage.setItem('bow-parameters:theme', goLight ? 'light' : 'dark'); } catch {}
 }
 
-function pushAudio() {
+function pushAudio(microfade) {
   const n = state.audio.node;
   if (!n) return;
+  if (microfade && state.audio.on && state.audio.gain) {
+    const g = state.audio.gain.gain;
+    const t = state.audio.ctx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(0.01, t + 0.004);
+    g.linearRampToValueAtTime(1.0,  t + 0.012);
+  }
   n.parameters.get('beta').value  = state.beta;
   n.parameters.get('force').value = state.f;
   n.parameters.get('vBow').value  = state.v;
