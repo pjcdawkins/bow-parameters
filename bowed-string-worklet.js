@@ -44,10 +44,13 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     const bb = this.bb, ub = this.ub, bn = this.bn, nb = this.nb;
 
     for (let i = 0; i < out.length; i++) {
-      // Smooth parameters (audio-rate lerp) to avoid zipper + clicks.
-      this.bSm += (bT - this.bSm) * 0.0015;
-      this.vSm += ((g > 0.5 ? vT : 0) - this.vSm) * 0.0015;
-      this.fSm += (fT - this.fSm) * 0.0015;
+      // Smooth parameters — slower for richer transitions; asymmetric
+      // release on vBow so the string rings down naturally.
+      this.bSm += (bT - this.bSm) * 0.0004;
+      const vTarget = g > 0.5 ? vT : 0;
+      const vCoeff = (vTarget < this.vSm) ? 0.00008 : 0.0004;
+      this.vSm += (vTarget - this.vSm) * vCoeff;
+      this.fSm += (fT - this.fSm) * 0.0004;
 
       const p  = Math.max(1, Math.min(N - 2, Math.round(this.bSm * N)));
       const Ln = N - p;
@@ -74,7 +77,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       const adv  = dv < 0 ? -dv : dv;
       const eps  = 0.14 / (F < 0.01 ? 0.01 : F);     // slip scale: large F = small eps = stickier
       const mu   = (dv < 0 ? -1 : 1) * adv / (adv + eps);
-      const delta = F * mu * 0.35;                   // bow-injected wave, Z0 absorbed
+      const delta = F * mu * 0.7;                    // bow-injected wave, Z0 absorbed
 
       // Advance pointers and write outgoing waves into each delay line.
       this.bbP = (this.bbP + 1) % N;
@@ -96,7 +99,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       y = d;
 
       // Gentle soft-clip safety net.
-      y = Math.tanh(y * 1.1) * 0.55;
+      y = Math.tanh(y * 1.1) * 0.72;
       out[i] = y;
     }
     return true;
