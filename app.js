@@ -443,6 +443,22 @@ async function toggleAudio() {
   btn.querySelector('.label').textContent = state.audio.on ? 'sound on' : 'sound off';
 }
 
+// ---------- theme ----------
+function applyTheme(light) {
+  document.documentElement.classList.toggle('light', light);
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', bg);
+  const btn = $('themeToggle');
+  btn.querySelector('.icon').textContent = light ? '\u{1F319}' : '\u{2600}\u{FE0F}';
+  btn.querySelector('.label').textContent = light ? 'dark' : 'light';
+  btn.setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
+}
+function toggleTheme() {
+  const goLight = !document.documentElement.classList.contains('light');
+  applyTheme(goLight);
+  try { localStorage.setItem('bow-parameters:theme', goLight ? 'light' : 'dark'); } catch {}
+}
+
 function pushAudio() {
   const n = state.audio.node;
   if (!n) return;
@@ -577,7 +593,7 @@ function renderTourVisual(kind) {
         <text class="mini-label" x="230" y="74" text-anchor="middle" style="font-size:11px; font-style:italic;">
           a sound is a relation, not a coordinate
         </text>
-        <text class="mini-label" x="230" y="100" text-anchor="middle" style="font-size:11px; fill:#7dd3fc;">
+        <text class="mini-label" x="230" y="100" text-anchor="middle" style="font-size:11px; fill:var(--accent);">
           close this — play
         </text>
       </svg>`;
@@ -593,7 +609,7 @@ function miniDiagramSvg({ speed, curves, presets }) {
   const b2x = (b) => px + (log(b) - log(BETA_MIN)) / (log(BETA_MAX) - log(BETA_MIN)) * pw;
   const f2y = (f) => py + (1 - (log(f) - log(F_MIN)) / (log(F_MAX) - log(F_MIN))) * ph;
   let s = `<svg viewBox="0 0 ${W} ${H}">`;
-  s += `<rect x="${px}" y="${py}" width="${pw}" height="${ph}" class="axis" stroke="rgba(230,237,245,0.18)" fill="none"/>`;
+  s += `<rect x="${px}" y="${py}" width="${pw}" height="${ph}" class="axis" style="stroke:var(--line);fill:none"/>`;
   s += `<text class="mini-label" x="${px + pw/2}" y="${H - 18}" text-anchor="middle">β →</text>`;
   s += `<text class="mini-label" x="14" y="${py + ph/2}" text-anchor="middle" transform="rotate(-90 14 ${py + ph/2})">F →</text>`;
 
@@ -669,6 +685,7 @@ function initControls() {
   });
 
   $('audioToggle').addEventListener('click', toggleAudio);
+  $('themeToggle').addEventListener('click', toggleTheme);
 
   $('tourBtn').addEventListener('click', openTour);
   $('tourClose').addEventListener('click', closeTour);
@@ -718,6 +735,11 @@ function initControls() {
 }
 
 function init() {
+  try {
+    const saved = localStorage.getItem('bow-parameters:theme');
+    if (saved === 'light') applyTheme(true);
+    else if (!saved && window.matchMedia('(prefers-color-scheme: light)').matches) applyTheme(true);
+  } catch {}
   buildSvg();
   initDrag();
   initControls();
