@@ -77,7 +77,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       const adv  = dv < 0 ? -dv : dv;
       const eps  = 0.14 / (F < 0.01 ? 0.01 : F);     // slip scale: large F = small eps = stickier
       const mu   = (dv < 0 ? -1 : 1) * adv / (adv + eps);
-      const delta = F * mu * 1.4;                    // bow-injected wave, Z0 absorbed
+      const delta = F * mu * 1.75;                   // bow-injected wave, Z0 absorbed
 
       // Advance pointers and write outgoing waves into each delay line.
       this.bbP = (this.bbP + 1) % N;
@@ -91,7 +91,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       ub[this.ubP] = bFromNt + delta;
 
       // Output proxy: the wave currently shaking the bridge.
-      let y = atBridge * 5.0;
+      let y = atBridge * 6.5;
 
       // DC blocker.
       const d = y - this.dcIn + 0.995 * this.dcOut;
@@ -99,7 +99,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       y = d;
 
       // Gentle soft-clip safety net.
-      y = Math.tanh(y * 1.1) * 0.9;
+      y = Math.tanh(y * 1.1) * 0.99;
       out[i] = y;
     }
     return true;
