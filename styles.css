@@ -44,7 +44,9 @@ html.light .tour { background: rgba(255, 255, 255, 0.85); }
 html.light .tour-card { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15); }
 html.light .tour-close:hover { background: rgba(0, 0, 0, 0.06); }
 html.light .tour-dots span { background: rgba(0, 0, 0, 0.15); }
-html.light #plot .puck { filter: drop-shadow(0 2px 6px rgba(0, 119, 182, 0.35)); }
+html.light #plot .puck { stroke: #333; filter: drop-shadow(0 2px 6px rgba(0, 119, 182, 0.35)); }
+html.light .btn-primary { background: var(--accent); }
+html.light .btn-primary:hover { background: #005f8f; }
 html.light .audio-status { background: rgba(239, 68, 68, 0.1); color: #b91c1c; border-color: rgba(239, 68, 68, 0.3); }
 
 * { box-sizing: border-box; }

@@ -446,8 +446,8 @@ async function toggleAudio() {
 // ---------- theme ----------
 function applyTheme(light) {
   document.documentElement.classList.toggle('light', light);
-  document.querySelector('meta[name="theme-color"]')
-    .setAttribute('content', light ? '#f5f5f0' : '#0e141a');
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', bg);
   const btn = $('themeToggle');
   btn.querySelector('.icon').textContent = light ? '\u{1F319}' : '\u{2600}\u{FE0F}';
   btn.querySelector('.label').textContent = light ? 'dark' : 'light';
