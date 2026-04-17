@@ -49,13 +49,35 @@ const REGION_COPY = {
   }
 };
 
+const PITCH_MIN_HZ = 65.41;   // C2
+const PITCH_MAX_HZ = 659.26;  // E5
+const PITCH_DEFAULT_HZ = 220; // A3
+
 const state = {
   beta: 0.075,
   f: 1.65,
   v: 1.14,
+  f0: PITCH_DEFAULT_HZ,
   audio: { ctx: null, node: null, on: false, pending: null, failed: false },
   anim: null
 };
+
+// ---------- pitch helpers ----------
+const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+function hzToSemitone(hz) { return 12 * Math.log2(hz / 220); } // semitones from A3
+function semitoneToHz(s)  { return 220 * Math.pow(2, s / 12); }
+function hzToNoteName(hz) {
+  const midi = Math.round(69 + 12 * Math.log2(hz / 440));
+  return NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+}
+// Mild loudness compensation so low pitches aren't swallowed by small
+// speakers and high pitches aren't piercing. Unity at 220 Hz, ~+2.5 dB at
+// 65 Hz, ~-2.5 dB at 660 Hz. Well under the worklet's tanh headroom.
+function pitchGainFor(hz) {
+  const g = Math.pow(220 / hz, 0.28);
+  return Math.max(0.6, Math.min(1.35, g));
+}
+function clampHz(hz) { return Math.max(PITCH_MIN_HZ, Math.min(PITCH_MAX_HZ, hz)); }
 
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
@@ -318,6 +340,10 @@ function updateReadout() {
   $('fDesc').textContent    = fWords(state.f);
   $('vOut').textContent     = state.v.toFixed(2);
   $('vSlider').value        = state.v;
+  const pitchOut = $('pitchOut');
+  if (pitchOut) {
+    pitchOut.textContent = `${hzToNoteName(state.f0)} · ${Math.round(state.f0)} Hz`;
+  }
 
   // Preset chip highlighting: require near-match on all three axes.
   document.querySelectorAll('#chips button').forEach(b => b.classList.remove('active'));
@@ -417,13 +443,17 @@ async function ensureAudio() {
       node.parameters.get('beta').value  = state.beta;
       node.parameters.get('force').value = state.f;
       node.parameters.get('vBow').value  = state.v;
+      node.parameters.get('f0').value    = state.f0;
       node.parameters.get('gate').value  = 0;
       const gain = ctx.createGain();
       gain.gain.value = 1.0;
-      node.connect(gain).connect(ctx.destination);
+      const pitchGain = ctx.createGain();
+      pitchGain.gain.value = pitchGainFor(state.f0);
+      node.connect(gain).connect(pitchGain).connect(ctx.destination);
       state.audio.ctx = ctx;
       state.audio.node = node;
       state.audio.gain = gain;
+      state.audio.pitchGain = pitchGain;
       return true;
     } catch (err) {
       state.audio.failed = true;
@@ -487,6 +517,14 @@ function pushAudio(microfade) {
   n.parameters.get('beta').value  = state.beta;
   n.parameters.get('force').value = state.f;
   n.parameters.get('vBow').value  = state.v;
+  n.parameters.get('f0').value    = state.f0;
+  if (state.audio.pitchGain && state.audio.ctx) {
+    state.audio.pitchGain.gain.setTargetAtTime(
+      pitchGainFor(state.f0),
+      state.audio.ctx.currentTime,
+      0.03
+    );
+  }
 }
 
 function softRetrigger(damp) {
@@ -706,6 +744,13 @@ function initControls() {
     pushAudio();
   });
 
+  $('pitchSlider').addEventListener('input', (e) => {
+    state.f0 = clampHz(semitoneToHz(parseFloat(e.target.value)));
+    updateReadout();
+    pushAudio();
+    try { localStorage.setItem('bow-parameters:pitch', String(state.f0)); } catch {}
+  });
+
   $('chips').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-preset]');
     if (!btn) return;
@@ -769,9 +814,15 @@ function init() {
     if (saved === 'light') applyTheme(true);
     else if (!saved && window.matchMedia('(prefers-color-scheme: light)').matches) applyTheme(true);
   } catch {}
+  try {
+    const savedPitch = parseFloat(localStorage.getItem('bow-parameters:pitch'));
+    if (Number.isFinite(savedPitch)) state.f0 = clampHz(savedPitch);
+  } catch {}
   buildSvg();
   initDrag();
   initControls();
+  const pitchSlider = $('pitchSlider');
+  if (pitchSlider) pitchSlider.value = hzToSemitone(state.f0).toFixed(1);
   updateAll();
 }
 

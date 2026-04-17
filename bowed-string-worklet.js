@@ -11,6 +11,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       { name: 'beta',  defaultValue: 0.08, minValue: 0.005, maxValue: 0.5,  automationRate: 'k-rate' },
       { name: 'vBow',  defaultValue: 0.0,  minValue: 0,     maxValue: 4.0,  automationRate: 'k-rate' },
       { name: 'force', defaultValue: 0.3,  minValue: 0,     maxValue: 30,   automationRate: 'k-rate' },
+      { name: 'f0',    defaultValue: 220,  minValue: 55,    maxValue: 700,  automationRate: 'k-rate' },
       { name: 'gate',  defaultValue: 0,    minValue: 0,     maxValue: 1,    automationRate: 'k-rate' }
     ];
   }
@@ -19,15 +20,17 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     super();
     const fs = sampleRate;
     this.fs = fs;
-    this.f0 = 220; // A3 — pedagogical pitch
-    // One-way delay in samples for each of the four ring buffers. Segment
-    // lengths p and (N - p) come from β via pointer offsets.
-    this.N = Math.max(32, Math.round(fs / this.f0 / 2));
-    const N = this.N;
-    this.bb = new Float32Array(N); this.bbP = 0;   // bridge -> bow (right-going)
-    this.ub = new Float32Array(N); this.ubP = 0;   // bow -> bridge (left-going)
-    this.bn = new Float32Array(N); this.bnP = 0;   // bow -> nut    (right-going)
-    this.nb = new Float32Array(N); this.nbP = 0;   // nut -> bow    (left-going)
+    // Buffers are sized once for the lowest supported fundamental; the live
+    // wrap length `N` below shrinks for higher pitches. 50 Hz gives headroom
+    // under the 55 Hz parameter floor.
+    this.F0_MIN = 50;
+    this.Nmax = Math.ceil(fs / (2 * this.F0_MIN)) + 4;
+    this.f0Sm = 220;
+    this.N = Math.max(32, Math.round(fs / this.f0Sm / 2));
+    this.bb = new Float32Array(this.Nmax); this.bbP = 0;   // bridge -> bow (right-going)
+    this.ub = new Float32Array(this.Nmax); this.ubP = 0;   // bow -> bridge (left-going)
+    this.bn = new Float32Array(this.Nmax); this.bnP = 0;   // bow -> nut    (right-going)
+    this.nb = new Float32Array(this.Nmax); this.nbP = 0;   // nut -> bow    (left-going)
     this.lp = 0;
     this.dcIn = 0; this.dcOut = 0;
     this.vSm = 0; this.fSm = 0.3; this.bSm = 0.08;
@@ -45,10 +48,10 @@ class BowedStringProcessor extends AudioWorkletProcessor {
   process(inputs, outputs, params) {
     const out = outputs[0][0];
     if (!out) return true;
-    const N = this.N;
     const bT = params.beta[0];
     const vT = params.vBow[0];
     const fT = params.force[0];
+    const pT = params.f0[0];
     const g  = params.gate[0];
     const bb = this.bb, ub = this.ub, bn = this.bn, nb = this.nb;
 
@@ -68,6 +71,17 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       this.bSm += (bT - this.bSm) * 0.008;
       this.vSm += (vT - this.vSm) * 0.008;
       this.fSm += (fT - this.fSm) * 0.008;
+      this.f0Sm += (pT - this.f0Sm) * 0.008;
+
+      // Live wrap length from smoothed pitch; integer snaps are inaudible
+      // thanks to the one-pole smoother. Buffers are at least Nmax long.
+      const N = Math.max(16, Math.min(this.Nmax, Math.round(this.fs / (2 * this.f0Sm))));
+      this.N = N;
+      // Keep pointers inside the live range so reads stay valid when N shrinks.
+      if (this.bbP >= N) this.bbP %= N;
+      if (this.ubP >= N) this.ubP %= N;
+      if (this.bnP >= N) this.bnP %= N;
+      if (this.nbP >= N) this.nbP %= N;
 
       const p  = Math.max(1, Math.min(N - 2, Math.round(this.bSm * N)));
       const Ln = N - p;
