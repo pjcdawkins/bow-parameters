@@ -354,6 +354,7 @@ function initDrag() {
     updatePuck();
     updateReadout();
     pushAudio(abrupt);
+    if (abrupt) softRetrigger();
     $('diagramHint')?.classList.add('faded');
   }
 
@@ -382,6 +383,8 @@ function applyPreset(name) {
   const p = PRESETS[name];
   if (!p) return;
   cancelPresetAnim();
+  softRetrigger();
+  pushAudio(true);
   const from = { beta: state.beta, f: state.f, v: state.v };
   const start = performance.now();
   const dur = 550;
@@ -484,6 +487,12 @@ function pushAudio(microfade) {
   n.parameters.get('beta').value  = state.beta;
   n.parameters.get('force').value = state.f;
   n.parameters.get('vBow').value  = state.v;
+}
+
+function softRetrigger(damp) {
+  const n = state.audio.node;
+  if (!n || !state.audio.on) return;
+  n.port.postMessage({ type: 'soft-retrigger', damp: damp ?? 0.25 });
 }
 
 // ---------- tour ----------
@@ -737,6 +746,7 @@ function initControls() {
       cancelPresetAnim();
       e.preventDefault();
       updatePuck(); updateReadout(); pushAudio();
+      softRetrigger();
     }
   });
 

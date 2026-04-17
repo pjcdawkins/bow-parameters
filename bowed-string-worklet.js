@@ -32,6 +32,14 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     this.dcIn = 0; this.dcOut = 0;
     this.vSm = 0; this.fSm = 0.3; this.bSm = 0.08;
     this.gSm = 0;   // smoothed gate envelope to avoid clicks
+    // Phase-continuous resonance dump on discrete technique switches.
+    this.port.onmessage = (e) => {
+      if (e.data && e.data.type === 'soft-retrigger') {
+        const k = (typeof e.data.damp === 'number') ? e.data.damp : 0.25;
+        const bb = this.bb, ub = this.ub, bn = this.bn, nb = this.nb;
+        for (let i = 0; i < this.N; i++) { bb[i] *= k; ub[i] *= k; bn[i] *= k; nb[i] *= k; }
+      }
+    };
   }
 
   process(inputs, outputs, params) {
@@ -57,9 +65,9 @@ class BowedStringProcessor extends AudioWorkletProcessor {
         out[i] = 0;
         continue;
       }
-      this.bSm += (bT - this.bSm) * 0.001;
-      this.vSm += (vT - this.vSm) * 0.001;
-      this.fSm += (fT - this.fSm) * 0.001;
+      this.bSm += (bT - this.bSm) * 0.008;
+      this.vSm += (vT - this.vSm) * 0.008;
+      this.fSm += (fT - this.fSm) * 0.008;
 
       const p  = Math.max(1, Math.min(N - 2, Math.round(this.bSm * N)));
       const Ln = N - p;
