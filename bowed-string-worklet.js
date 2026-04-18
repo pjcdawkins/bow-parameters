@@ -26,7 +26,9 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     this.F0_MIN = 50;
     this.Nmax = Math.ceil(fs / (2 * this.F0_MIN)) + 4;
     this.f0Sm = 220;
-    this.N = Math.max(32, Math.round(fs / this.f0Sm / 2));
+    // Subtract 2 to compensate for the 4 implicit unit delays (one per
+    // delay-line read→advance→write) in the round-trip loop.
+    this.N = Math.max(32, Math.round(fs / this.f0Sm / 2 - 2));
     this.bb = new Float32Array(this.Nmax); this.bbP = 0;   // bridge -> bow (right-going)
     this.ub = new Float32Array(this.Nmax); this.ubP = 0;   // bow -> bridge (left-going)
     this.bn = new Float32Array(this.Nmax); this.bnP = 0;   // bow -> nut    (right-going)
@@ -75,7 +77,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
 
       // Live wrap length from smoothed pitch; integer snaps are inaudible
       // thanks to the one-pole smoother. Buffers are at least Nmax long.
-      const N = Math.max(16, Math.min(this.Nmax, Math.round(this.fs / (2 * this.f0Sm))));
+      const N = Math.max(16, Math.min(this.Nmax, Math.round(this.fs / (2 * this.f0Sm) - 2)));
       this.N = N;
       // Keep pointers inside the live range so reads stay valid when N shrinks.
       if (this.bbP >= N) this.bbP %= N;
