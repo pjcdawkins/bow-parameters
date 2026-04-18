@@ -480,7 +480,11 @@ async function toggleAudio() {
     const { ctx, node } = state.audio;
     if (ctx.state === 'suspended') await ctx.resume();
     state.audio.on = !state.audio.on;
-    node.parameters.get('gate').value = state.audio.on ? 1 : 0;
+    // When turning off, kill the gate immediately.
+    // When turning on, keep gate=0; the first user interaction
+    // (diagram tap, preset, slider, keyboard) will open the gate,
+    // avoiding a loud surprise at max volume.
+    if (!state.audio.on) node.parameters.get('gate').value = 0;
     const btn = $('audioToggle');
     btn.setAttribute('aria-pressed', state.audio.on ? 'true' : 'false');
     btn.querySelector('.icon').textContent = state.audio.on ? '🔈' : '🔇';
@@ -509,6 +513,10 @@ function toggleTheme() {
 function pushAudio(microfade) {
   const n = state.audio.node;
   if (!n) return;
+  // Open the gate on the first interaction after arming audio.
+  if (state.audio.on && n.parameters.get('gate').value < 0.5) {
+    n.parameters.get('gate').value = 1;
+  }
   if (microfade && state.audio.on && state.audio.gain) {
     const g = state.audio.gain.gain;
     const t = state.audio.ctx.currentTime;
