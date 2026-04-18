@@ -438,6 +438,9 @@ async function ensureAudio() {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx || typeof AudioWorkletNode === 'undefined') throw new Error('no audio worklet');
       const ctx = new Ctx();
+      // Resume immediately while still inside the user-gesture call stack;
+      // iOS Safari ignores resume() once any await breaks the gesture chain.
+      if (ctx.state === 'suspended') await ctx.resume();
       await ctx.audioWorklet.addModule('bowed-string-worklet.js');
       const node = new AudioWorkletNode(ctx, 'bowed-string', { outputChannelCount: [1] });
       node.parameters.get('beta').value  = state.beta;
