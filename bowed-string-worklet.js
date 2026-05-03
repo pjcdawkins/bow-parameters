@@ -39,6 +39,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     this.dcIn = 0; this.dcOut = 0;
     this.vSm = 0; this.fSm = 0.3; this.bSm = 0.08;
     this.gSm = 0;   // smoothed gate envelope to avoid clicks
+    this.stickCount = 0;   // samples spent continuously in stick
     // Phase-continuous resonance dump on discrete technique switches.
     this.port.onmessage = (e) => {
       if (e.data && e.data.type === 'soft-retrigger') {
@@ -77,6 +78,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
         bb.fill(0); ub.fill(0); bn.fill(0); nb.fill(0);
         this.lp = 0; this.dcIn = 0; this.dcOut = 0;
         this.gSm = 0;
+        this.stickCount = 0;
         out[i] = 0;
         continue;
       }
@@ -131,19 +133,39 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       // sudden drop from μS to a smaller value is what carves the sharp
       // Helmholtz corner — the violin tone's defining feature.
       const F = this.fSm;
-      // Schnarr-region noise: at high force the model would otherwise
-      // settle into permanent stick (no slips → no sound). A small random
-      // perturbation in the bow velocity forces aperiodic slips, which is
-      // what overpressure / Schnarrklang sound like physically.
-      const noiseAmt = F > 4 ? (F - 4) * 0.05 : 0;
-      const vBow = this.vSm + noiseAmt * (Math.random() * 2 - 1);
       const vH = bFromBr + bFromNt;
-      const dvH = vBow - vH;
+      const dvH = this.vSm - vH;
       const stickDelta = dvH * 0.5;
       const stickLimit = F * muS * 0.5;
+      const inStick = stickDelta <= stickLimit && stickDelta >= -stickLimit;
+
+      // Stick-fatigue forced slip. Above the Schelleng max force the
+      // peak |dvH/2| in Helmholtz is below the static stick limit, so
+      // the bow can never release on its own and the model would go
+      // silent. Real strings under overpressure release after holding
+      // through several fundamental periods at once — that's the
+      // origin of the sub-harmonic / "bassy" overpressure tone (slip
+      // events at f0/2, f0/3, …). Mimic that by scaling the fatigue
+      // limit as a multiple of the fundamental period (2N+4 samples,
+      // matching the round-trip delay budget) that grows with F. A
+      // small random jitter gives the irregular grain.
+      let forceSlip = false;
+      if (inStick) {
+        this.stickCount++;
+        if (F > 5) {
+          const period = 2 * N + 4;
+          const meanLimit = period * (1 + (F - 5) * 0.3);
+          if (this.stickCount > meanLimit * (0.85 + 0.3 * Math.random())) {
+            forceSlip = true;
+            this.stickCount = 0;
+          }
+        }
+      } else {
+        this.stickCount = 0;
+      }
 
       let delta;
-      if (stickDelta <= stickLimit && stickDelta >= -stickLimit) {
+      if (inStick && !forceSlip) {
         delta = stickDelta;
       } else {
         const adv = dvH < 0 ? -dvH : dvH;
