@@ -133,7 +133,7 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       // Velocity scales volume (faster bow = louder); beta gain lifts tasto.
       const vGain = 0.3 + this.vSm * 1.5;
       const betaGain = 1 + this.bSm * 12;
-      let y = atBridge * 10 * betaGain * vGain;
+      let y = atBridge * 3 * betaGain * vGain;
 
       // DC blocker.
       const d = y - this.dcIn + 0.995 * this.dcOut;

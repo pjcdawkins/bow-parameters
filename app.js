@@ -7,6 +7,11 @@ const BETA_MIN = 0.015, BETA_MAX = 0.25;
 const F_MIN = 0.01, F_MAX = 30;
 const K_MAX = 0.5, K_MIN = 0.0012;
 
+// Worklet output is loudness-saturated via tanh, so it sits near full
+// scale. Attenuate here for comfortable headphone listening; phone
+// speakers stay audible because the source is already hot.
+const MASTER_GAIN = 0.05;
+
 const PLOT = { x: 66, y: 40, w: 500, h: 500 };
 
 const PRESETS = {
@@ -449,7 +454,7 @@ async function ensureAudio() {
       node.parameters.get('f0').value    = state.f0;
       node.parameters.get('gate').value  = 0;
       const gain = ctx.createGain();
-      gain.gain.value = 1.0;
+      gain.gain.value = MASTER_GAIN;
       const pitchGain = ctx.createGain();
       pitchGain.gain.value = pitchGainFor(state.f0);
       node.connect(gain).connect(pitchGain).connect(ctx.destination);
@@ -523,7 +528,7 @@ function pushAudio(microfade) {
     g.cancelScheduledValues(t);
     g.setValueAtTime(g.value, t);
     g.linearRampToValueAtTime(0.01, t + 0.004);
-    g.linearRampToValueAtTime(1.0,  t + 0.012);
+    g.linearRampToValueAtTime(MASTER_GAIN, t + 0.012);
   }
   n.parameters.get('beta').value  = state.beta;
   n.parameters.get('force').value = state.f;
