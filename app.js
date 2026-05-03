@@ -370,6 +370,7 @@ function updateAll() {
 function initDrag() {
   const svg = $('plot');
   let dragging = false;
+  let lastRegion = null;
 
   function toLocal(evt) {
     const pt = svg.createSVGPoint();
@@ -385,7 +386,17 @@ function initDrag() {
     updatePuck();
     updateReadout();
     pushAudio(abrupt);
-    if (abrupt) softRetrigger();
+    // Helmholtz lock-in is sticky: smooth parameter changes alone won't
+    // unseat an established oscillation pattern. Dump some loop energy
+    // when the drag crosses into a new sonic regime so the new pattern
+    // can take hold cleanly. Gentler than the abrupt-tap retrigger.
+    const region = classify(state.beta, state.f, state.v);
+    if (abrupt) {
+      softRetrigger();
+    } else if (region !== lastRegion && lastRegion !== null) {
+      softRetrigger(0.6);
+    }
+    lastRegion = region;
     $('diagramHint')?.classList.add('faded');
   }
 

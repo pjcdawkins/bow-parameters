@@ -2,8 +2,10 @@
 // Pedagogical, not a faithful violin model. Four uni-directional delay
 // segments around the string loop meet at the bow scattering junction;
 // bridge + nut terminate with sign flip, bridge adds a one-pole lowpass
-// to mimic frequency-dependent losses. Stick-slip is approximated with
-// a saturating friction curve whose "slip threshold" scales as 1 / F.
+// to mimic frequency-dependent losses. The bow uses a stick-slip
+// friction model (Friedlander-style) — high static friction grabs the
+// string during stick, lower kinetic friction releases it during slip,
+// and the slip event is what produces the Helmholtz corner.
 
 class BowedStringProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
@@ -57,6 +59,14 @@ class BowedStringProcessor extends AudioWorkletProcessor {
     const g  = params.gate[0];
     const bb = this.bb, ub = this.ub, bn = this.bn, nb = this.nb;
 
+    // Friction curve constants. muS / muD are dimensionless friction
+    // coefficients (static / kinetic); vSlip is the relative-velocity scale
+    // over which kinetic friction decays toward muD. These are tuned for
+    // the F and v ranges exposed by the UI rather than calibrated to rosin.
+    const muS = 0.85;
+    const muD = 0.20;
+    const vSlip = 0.10;
+
     for (let i = 0; i < out.length; i++) {
       // Smooth gate envelope (~5 ms ramp) to avoid clicks on start/stop.
       const gTarget = g >= 0.5 ? 1 : 0;
@@ -104,20 +114,42 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       // Nut termination: near-rigid, just sign flip with tiny loss.
       const nutOut = -atNut * 0.9995;
 
-      // Bow junction: scatter with friction-curve nonlinearity.
-      const vStr = bFromBr + bFromNt;
-      const F    = this.fSm;
-      const beta = this.bSm;
-      // High force → noisy bow velocity for aperiodic schnarr character.
-      const schnarr = F > 7.5 ? (Math.random() * 2 - 1) * (F - 7.5) * 0.3 : 0;
-      const dv   = this.vSm + schnarr - vStr;
-      const adv  = dv < 0 ? -dv : dv;
-      // Slip scale varies with β: looser near bridge (clean ponticello),
-      // stickier far from bridge (tasto sustains).
-      const epsBase = 0.05 + Math.max(0, 0.12 - beta) * 1.2;
-      const eps  = epsBase / (F < 0.01 ? 0.01 : F);
-      const mu   = (dv < 0 ? -1 : 1) * adv / (adv + eps);
-      const delta = F * mu * 5.0;                    // bow-injected wave, Z0 absorbed
+      // ---- Bow scattering junction (stick-slip friction) ----
+      // String velocity at the bow point is the sum of the right-going and
+      // left-going waves arriving there. The bow injects an equal velocity
+      // wave into both directions; its magnitude is the friction force /
+      // (2 Z0). With Z0 absorbed into normalised units, delta = F·μ/2.
+      //
+      // Stick: the bow drags the string to its own velocity exactly. The
+      // injection that achieves this is delta = (vBow − vH)/2, since after
+      // injection the new string velocity at the bow is vH + 2·delta = vBow.
+      // Stick is only possible while the required friction force stays
+      // below the static limit |F·μS|, i.e. |delta| ≤ F·μS/2.
+      //
+      // Slip: when stick fails, the bow uses kinetic friction whose
+      // magnitude drops with relative velocity (Friedlander curve). The
+      // sudden drop from μS to a smaller value is what carves the sharp
+      // Helmholtz corner — the violin tone's defining feature.
+      const F = this.fSm;
+      // Schnarr-region noise: at high force the model would otherwise
+      // settle into permanent stick (no slips → no sound). A small random
+      // perturbation in the bow velocity forces aperiodic slips, which is
+      // what overpressure / Schnarrklang sound like physically.
+      const noiseAmt = F > 4 ? (F - 4) * 0.05 : 0;
+      const vBow = this.vSm + noiseAmt * (Math.random() * 2 - 1);
+      const vH = bFromBr + bFromNt;
+      const dvH = vBow - vH;
+      const stickDelta = dvH * 0.5;
+      const stickLimit = F * muS * 0.5;
+
+      let delta;
+      if (stickDelta <= stickLimit && stickDelta >= -stickLimit) {
+        delta = stickDelta;
+      } else {
+        const adv = dvH < 0 ? -dvH : dvH;
+        const muK = muD + (muS - muD) * Math.exp(-adv / vSlip);
+        delta = (dvH < 0 ? -1 : 1) * F * muK * 0.5;
+      }
 
       // Advance pointers and write outgoing waves into each delay line.
       this.bbP = (this.bbP + 1) % N;
@@ -130,10 +162,11 @@ class BowedStringProcessor extends AudioWorkletProcessor {
       bn[this.bnP] = bFromBr + delta;
       ub[this.ubP] = bFromNt + delta;
 
-      // Velocity scales volume (faster bow = louder); beta gain lifts tasto.
-      const vGain = 0.3 + this.vSm * 1.5;
-      const betaGain = 1 + this.bSm * 12;
-      let y = atBridge * 3 * betaGain * vGain;
+      // Output: bridge-incident wave. Pre-tanh gain leaves quiet regimes
+      // (flautando, tasto) below saturation while pushing strong regimes
+      // (ordinario, ponticello) into a soft ceiling — that's where the
+      // dynamic contrast across the diagram comes from.
+      let y = atBridge * 0.6;
 
       // DC blocker.
       const d = y - this.dcIn + 0.995 * this.dcOut;
